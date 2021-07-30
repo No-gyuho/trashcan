@@ -1,0 +1,149 @@
+package com.example.googlemaps
+
+import android.annotation.SuppressLint
+import android.content.pm.PackageManager.PERMISSION_GRANTED
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import android.location.Location
+import android.os.Build
+import androidx.appcompat.app.AppCompatActivity
+import android.os.Bundle
+import android.os.Looper
+import android.util.Log
+import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.OnMapReadyCallback
+import com.google.android.gms.maps.SupportMapFragment
+import com.example.googlemaps.databinding.ActivityMapsBinding
+import com.google.android.gms.location.*
+import com.google.android.gms.maps.model.*
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.MarkerOptions
+
+
+class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
+
+    val permissions = arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+    val PERM_FLAG = 99
+    private lateinit var mMap: GoogleMap
+
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_maps) //맵.xml
+
+        if (isPermitted()){
+            startProcess()
+        }else{
+            ActivityCompat.requestPermissions(this,permissions,PERM_FLAG)
+        }
+    }
+
+    //권한 체크 함수
+    fun isPermitted() : Boolean{
+        for(perm in permissions){
+            if(ContextCompat.checkSelfPermission(this,perm) != PERMISSION_GRANTED){
+                return false
+            }
+        }
+        return true
+    }
+    fun startProcess(){
+        // Obtain the SupportMapFragment and get notified when the map is ready to be used.
+        val mapFragment = supportFragmentManager
+            .findFragmentById(R.id.map) as SupportMapFragment
+        mapFragment.getMapAsync(this) //onMapReady 함수 호출
+    }
+
+    override fun onMapReady(googleMap: GoogleMap) {
+        mMap = googleMap
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        setUpdateLocationListener()
+    }
+
+    // -- 내 위치를 가져오는 코드
+    lateinit var fusedLocationClient:FusedLocationProviderClient //GPS+Network 좌표가져올때 배터리소모,정확도를 자동으로 조절해줌
+    lateinit var locationCallback:LocationCallback //fused의 응답코드
+
+    @SuppressLint("MissingPermission") //문법 검사기
+    fun setUpdateLocationListener(){ //좌표값 갱신을 등록하는 함수
+        val locationRequest = LocationRequest.create()
+        locationRequest.run {
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY //정확도를 높혀주지만 배터리소모는 빠름
+            interval = 1000 //1초에 한번씩 좌표값 요청
+        }
+
+        locationCallback = object : LocationCallback(){
+            override fun onLocationResult(locationResult: LocationResult?) {
+                locationResult?.let {
+                    for((i, location) in it.locations.withIndex()){
+                        Log.d("로케이션", "$i ${location.latitude}, ${location.longitude}")
+                        setLastLocation(location)
+                    }
+                }
+            }
+        }
+
+        //location 요청 함수 호출 (locationRequest, locationCallback)
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
+    }
+
+    //maker option and camera move
+    fun setLastLocation(location : Location) {
+        val myLocation = LatLng(location.latitude, location.longitude)
+        val marker = MarkerOptions()
+            .position(myLocation)
+            .title("I am here!")
+        val cameraOption = CameraPosition.Builder()
+            .target(myLocation)
+            .zoom(15.0f)
+            .build()
+        var camera = CameraUpdateFactory.newCameraPosition(cameraOption)
+
+        mMap.addMarker(marker)
+        mMap.moveCamera(camera)
+    }
+
+    //maker icon funtion
+    fun getDescriptorFromDrawable(drawableId : Int) : BitmapDescriptor{
+        var bitmapDrawable:BitmapDrawable
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP){
+            bitmapDrawable = getDrawable(drawableId) as BitmapDrawable
+        } else{
+            bitmapDrawable = resources.getDrawable(drawableId) as BitmapDrawable
+        }
+
+        //marker size
+        val scaledBitmap = Bitmap.createScaledBitmap(bitmapDrawable.bitmap, 100,100,false)
+        return BitmapDescriptorFactory.fromBitmap(scaledBitmap)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when(requestCode){
+            PERM_FLAG -> {
+                var check = false
+                for(grant in grantResults){
+                    if(grant != PERMISSION_GRANTED){
+                        check = false
+                        break
+                    }
+                }
+                if(check){
+                    startProcess()
+                }else{
+                    Toast.makeText(this,"권한을 승인해야지만 앱을 사용할 수 있습니다",Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+}
